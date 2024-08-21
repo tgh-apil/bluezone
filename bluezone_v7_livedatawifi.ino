@@ -109,7 +109,6 @@ void loop(void) {
   flowData.output = get_sfm3000_data(1,7);
   get_bme688_data(flowData);
   getLoadCellData();
-  Serial.println();
 }
 
 void wifiSetup() {
@@ -187,10 +186,11 @@ void bmeSetup(void) {
     uint16_t sharedHeatrDur =
       MEAS_DUR - (bme[i].getMeasDur(BME68X_PARALLEL_MODE) / INT64_C(1000));
 
-    bme[i].setHeaterProf(tempProf, mulProf, sharedHeatrDur, 10);
+    // bme[i].setHeaterProf(tempProf, mulProf, sharedHeatrDur, 10);
+    bme[i].setHeaterProf(320,100);
 
     /* Forced mode of sensor operation */
-    bme[i].setOpMode(BME68X_PARALLEL_MODE);
+    // bme[i].setOpMode(BME68X_FORCED_MODE);
   }
 }
 
@@ -206,13 +206,14 @@ void get_bme688_data(struct flowMass flowData) {
     logHeader += ",";
 
     for (int i = 0; i < N_SENS; i++) {
+      bme[i].setOpMode(BME68X_FORCED_MODE);
 
       if (bme[i].fetchData()) {
         bme[i].getData(data[i]);
         // Serial.print(String(millis()) + " ms, ");
         Serial.print("Temp"+ String(i) + ":" + String(data[i].temperature) + ",");
         // Serial.print(String(data[i].pressure) + " Pa, ");
-        Serial.print("Humidity" + String(i) + ":" + String(data[i].humidity) + " ,");
+        Serial.print("Humidity" + String(i) + ":" + String(data[i].humidity) + ",");
         Serial.print("Resistance" + String(i) + ":" + String(data[i].gas_resistance/1000000) + ",");
         // Serial.println(data[i].status, HEX);
 
@@ -355,7 +356,7 @@ void getLoadCellData(void) {
     if (millis() > t + serialPrintInterval) {
       flowData.mass = LoadCell.getData();
 
-      Serial.print("Mass:" + String(flowData.mass) + ",");
+      Serial.println("Mass:" + String(flowData.mass));
       // Serial.print(flowData.mass); 
       // Serial.println();
 
