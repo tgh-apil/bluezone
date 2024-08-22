@@ -24,10 +24,10 @@ ESP8266WiFiMulti wifiMulti;
 #endif
 
 // WiFi AP SSID
-#define WIFI_SSID "UHN-Guest-WiFi"
-// #define WIFI_SSID "Tiffany"
+// #define WIFI_SSID "UHN-Guest-WiFi"
+#define WIFI_SSID "WC_Guest"
 // WiFi password
-#define WIFI_PASSWORD ""
+#define WIFI_PASSWORD "WomensCollege"
 
 #define TZ_INFO "EST5EDT"
 
@@ -104,7 +104,7 @@ void setup(void) {
 }
 
 void loop(void) {
-  delay(100);
+  delay(200);
   flowData.input = get_sfm3000_data(0,0);
   flowData.output = get_sfm3000_data(1,7);
   get_bme688_data(flowData);
@@ -115,7 +115,7 @@ void wifiSetup() {
   configTzTime(time_zone, ntpServer1, ntpServer2);
 
   Serial.printf("Connecting to %s ", WIFI_SSID);
-  WiFi.begin(WIFI_SSID);
+  WiFi.begin(WIFI_SSID,WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
@@ -179,12 +179,12 @@ void bmeSetup(void) {
     /* Heater temperature in degree Celsius as per the suggested heater profile
       */
     // uint16_t tempProf[10] = { 320, 100, 100, 100, 200, 200, 200, 320, 320, 320 };
-    uint16_t tempProf[10] = { 320, 320, 320, 320, 320, 320, 320, 320, 320, 320 };
+    // uint16_t tempProf[10] = { 320, 320, 320, 320, 320, 320, 320, 320, 320, 320 };
     /* Multiplier to the shared heater duration */
-    uint16_t mulProf[10] = { 5, 2, 10, 30, 5, 5, 5, 5, 5, 5 };
-    /* Shared heating duration in milliseconds */
-    uint16_t sharedHeatrDur =
-      MEAS_DUR - (bme[i].getMeasDur(BME68X_PARALLEL_MODE) / INT64_C(1000));
+    // uint16_t mulProf[10] = { 5, 2, 10, 30, 5, 5, 5, 5, 5, 5 };
+    // /* Shared heating duration in milliseconds */
+    // uint16_t sharedHeatrDur =
+    //   MEAS_DUR - (bme[i].getMeasDur(BME68X_PARALLEL_MODE) / INT64_C(1000));
 
     // bme[i].setHeaterProf(tempProf, mulProf, sharedHeatrDur, 10);
     bme[i].setHeaterProf(320,100);
