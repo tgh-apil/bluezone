@@ -24,10 +24,11 @@ ESP8266WiFiMulti wifiMulti;
 #endif
 
 // WiFi AP SSID
-// #define WIFI_SSID "UHN-Guest-WiFi"
-#define WIFI_SSID "WC_Guest"
+#define WIFI_SSID "UHN-Guest-WiFi"
+// #define WIFI_SSID "WC_Guest"
 // WiFi password
-#define WIFI_PASSWORD "WomensCollege"
+#define WIFI_PASSWORD ""
+// #define WIFI_PASSWORD "WomensCollege"
 
 #define TZ_INFO "EST5EDT"
 
@@ -81,6 +82,19 @@ const int HX711_sck = 5;   //mcu > HX711 sck pin
 //HX711 constructor
 HX711_ADC LoadCell(HX711_dout, HX711_sck);
 
+// declare running average variables
+RunningAverage inputFlowRA(10);
+RunningAverage outputFlowRA(10);
+RunningAverage inputResRA(10);
+RunningAverage outputResRA(10);
+RunningAverage inputTempRA(10);
+RunningAverage outputTempRA(10);
+RunningAverage inputPresRA(10);
+RunningAverage outputPresRA(10);
+RunningAverage inputHumRA(10);
+RunningAverage outputHumRA(10);
+RunningAverage massRA(10);
+
 void setup(void) {
   Serial.begin(115200);
   Wire.begin();
@@ -106,9 +120,12 @@ void setup(void) {
 void loop(void) {
   delay(200);
   flowData.input = get_sfm3000_data(0,0);
+  inputFlowRA.add(flowData.input);
   flowData.output = get_sfm3000_data(1,7);
-  get_bme688_data(flowData);
+  outputFlowRA.add(flowData.output);
   getLoadCellData();
+  get_bme688_data(flowData);
+
 }
 
 void wifiSetup() {
@@ -150,7 +167,8 @@ void sdSetup(void) {
                 "Index,Input Meas Index,Input idac,Input Status,Input Gas Valid,Input Heater Stable,"
                 "Output Temperature(deg C),Output Pressure(Pa),Output Humidity(%),Output Gas Resistance(ohm),"
                 "Output Gas Index,Output Meas Index,Output idac,Output Status,Output Gas Valid,Output Heater "
-                "Stable,Input Flow,Output Flow,Mass (g)";
+                "Stable,Input Flow,Output Flow,Mass (g),RAI Temp,RAO Temp,RAI Hum,RAO Hum,RAI Pres,"
+                "RAO Pres,RAI Res,RAO Res,RAI Flow,RAO Flow, RA Mass";
 
     if (file.println(logHeader)) {
       // Serial.println(logHeader);
@@ -197,6 +215,11 @@ void bmeSetup(void) {
 void get_bme688_data(struct flowMass flowData) {
   int16_t indexDiff;
   bool newLogdata = false;
+  float temperature;
+  float pressure;
+  float humidity;
+  float resistance;
+  
 
   if ((millis() - lastLogged) >= MEAS_DUR) {
 
@@ -211,22 +234,37 @@ void get_bme688_data(struct flowMass flowData) {
       if (bme[i].fetchData()) {
         bme[i].getData(data[i]);
         // Serial.print(String(millis()) + " ms, ");
-        Serial.print("Temp"+ String(i) + ":" + String(data[i].temperature) + ",");
+        temperature = data[i].temperature;
+        pressure = data[i].pressure;
+        humidity = data[i].humidity;
+        resistance = data[i].gas_resistance;
+        if (i == 0) {
+          inputTempRA.addValue(temperature);
+          inputPresRA.addValue(pressure);
+          inputHumRA.addValue(humidity);
+          inputResRA.addValue(resistance);
+        } else {
+          outputTempRA.addValue(temperature);
+          outputPresRA.addValue(pressure);
+          outputHumRA.addValue(humidity);
+          outputResRA.addValue(resistance);
+        }
+        Serial.print("Temp"+ String(i) + ":" + String(temperature) + ",");
         // Serial.print(String(data[i].pressure) + " Pa, ");
-        Serial.print("Humidity" + String(i) + ":" + String(data[i].humidity) + ",");
-        Serial.print("Resistance" + String(i) + ":" + String(data[i].gas_resistance/1000000) + ",");
+        Serial.print("Humidity" + String(i) + ":" + String(humidity) + ",");
+        Serial.print("Resistance" + String(i) + ":" + String(resistance/1000000) + ",");
         // Serial.println(data[i].status, HEX);
 
         lastMeasindex = data[i].meas_index;
       }
 
-      logHeader += data[i].temperature;
+      logHeader += temperature;
       logHeader += ",";
-      logHeader += data[i].pressure;
+      logHeader += pressure;
       logHeader += ",";
-      logHeader += data[i].humidity;
+      logHeader += humidity;
       logHeader += ",";
-      logHeader += data[i].gas_resistance;
+      logHeader += resistance;
       logHeader += ",";
       logHeader += data[i].gas_index;
       logHeader += ",";
@@ -243,13 +281,43 @@ void get_bme688_data(struct flowMass flowData) {
     }
   }
 
+
   logHeader += flowData.input;
   logHeader += ",";
   logHeader += flowData.output;
   logHeader += ",";
   logHeader += flowData.mass;
-  logHeader += "\r\n";
-  newLogdata = true;
+
+  if (inputResRA.bufferIsFull()) {
+    logHeader += ",";
+    logHeader += inputTempRA.getAverage();
+    logHeader += ",";
+    logHeader += outputTempRA.getAverage();
+    logHeader += ",";
+    logHeader += inputHumRA.getAverage();
+    logHeader += ",";
+    logHeader += outputHumRA.getAverage();
+    logHeader += ",";
+    logHeader += inputPresRA.getAverage();
+    logHeader += ",";
+    logHeader += outputPresRA.getAverage();
+    logHeader += ",";
+    logHeader += inputResRA.getAverage();
+    logHeader += ",";
+    logHeader += outputResRA.getAverage();
+    logHeader += ",";
+    logHeader += inputFlowRA.getAverage();
+    logHeader += ",";
+    logHeader += outputFlowRA.getAverage();
+    logHeader += ",";
+    logHeader += massRA.getAverage();
+    logHeader += "\r\n";
+    newLogdata = true;
+  } else {
+    logHeader += "\r\n";
+    newLogdata = true;
+  }
+  
 
   if (newLogdata) {
     newLogdata = false;
@@ -355,7 +423,7 @@ void getLoadCellData(void) {
   if (newDataReady) {
     if (millis() > t + serialPrintInterval) {
       flowData.mass = LoadCell.getData();
-
+      massRA.add(flowData.mass);
       Serial.println("Mass:" + String(flowData.mass));
       // Serial.print(flowData.mass); 
       // Serial.println();
@@ -435,4 +503,4 @@ static void appendFile(String sensorData) {
     Serial.println("Failed to append");
   }
   file.close();
-}
+}  
