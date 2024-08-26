@@ -208,7 +208,7 @@ void bmeSetup(void) {
     bme[i].setHeaterProf(320,100);
 
     /* Forced mode of sensor operation */
-    // bme[i].setOpMode(BME68X_FORCED_MODE);
+    // bme[i].setOpMode(BME68X_PARALLEL_MODE);
   }
 }
 
