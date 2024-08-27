@@ -25,10 +25,11 @@ ESP8266WiFiMulti wifiMulti;
 #endif
 
 // WiFi AP SSID
-// #define WIFI_SSID "UHN-Guest-WiFi"
-#define WIFI_SSID "WC_Guest"
+#define WIFI_SSID "UHN-Guest-WiFi"
+// #define WIFI_SSID "WC_Guest"
 // WiFi password
-#define WIFI_PASSWORD "WomensCollege"
+#define WIFI_PASSWORD ""
+// #define WIFI_PASSWORD "WomensCollege"
 
 #define TZ_INFO "EST5EDT"
 
@@ -51,7 +52,6 @@ Bme68x bme[N_SENS];
 bme68xData data[N_SENS] = { 0 };
 SensirionI2CSfm3000 sfm[N_SENS];
 File file;
-// uncomment for RTC
 RTC_DS3231 rtc;
 
 uint8_t lastMeasindex = { 0 };
@@ -88,7 +88,6 @@ void setup(void) {
   Serial.begin(115200);
   Wire.begin();
 
-  // uncomment for setup real time clock
   if (!rtc.begin()) {
     Serial.println("RTC module is NOT found");
     while (1)
@@ -105,7 +104,7 @@ void setup(void) {
 
   startLoadCell();
 
-  // wifiSetup();
+  wifiSetup();
   sdSetup();
 
   bme[0].begin(0x76, Wire);
