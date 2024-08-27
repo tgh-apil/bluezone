@@ -3,6 +3,7 @@
 #include "Wire.h"
 #include "SensirionI2CSfm3000.h"
 #include <HX711_ADC.h>
+#include <RTClib.h>
 #include <SD.h>
 #include <SPI.h>
 #if defined(ESP8266) || defined(ESP32) || defined(AVR)
@@ -51,6 +52,7 @@ Bme68x bme[N_SENS];
 bme68xData data[N_SENS] = { 0 };
 SensirionI2CSfm3000 sfm[N_SENS];
 File file;
+RTC_DS3231 rtc;
 
 uint8_t lastMeasindex = { 0 };
 bme68xData sensorData = { 0 };
@@ -98,6 +100,17 @@ RunningAverage massRA(10);
 void setup(void) {
   Serial.begin(115200);
   Wire.begin();
+
+  if (!rtc.begin()) {
+      Serial.println("RTC module is NOT found");
+      while (1)
+        ;
+    }
+
+  if (rtc.lostPower()) {
+    Serial.println("RTC lost power, setting time...");
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  }
 
   while (!Serial)
     delay(100);
@@ -443,6 +456,8 @@ void tcaselect(uint8_t i) {
   Wire.endTransmission();  
 }
 
+
+/* Time using Wifi, comment out RTC time function below and uncomment this one */
 String timeToString(void) {
   struct tm timeInfo;
   char buf[50];
@@ -464,6 +479,55 @@ String timeToString(void) {
   
   return time;
 }
+
+/* Time using RTC, comment out function above and uncomment function below */
+// String timeToString(void) {
+//   String time = "";
+//   DateTime now = rtc.now();
+
+//   time += now.year();
+//   time += "-";
+
+//   if (now.month() < 10) {
+//     time += "0";
+//     time += now.month();
+//   } else {
+//     time += now.month();
+//   }
+
+//   time += "-";
+
+//   if (now.day() < 10) {
+//     time += "0";
+//     time += now.day();
+//   } else {
+//     time += now.day();
+//   }
+
+//   time += " ";
+
+//   if (now.hour() < 10) {
+//     time += "0";
+//     time += now.hour();
+//   } else {
+//     time += now.hour();
+//   }
+
+//   if (now.minute() < 10) {
+//     time += "0";
+//     time += now.minute();
+//   } else {
+//     time += now.minute();
+//   }
+
+//   if (now.second() < 10) {
+//     time += "0";
+//     time += now.second();
+//   } else {
+//     time += now.second();
+//   }
+//   return time;
+// }
 
 
 /*!
