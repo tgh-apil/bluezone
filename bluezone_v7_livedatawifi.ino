@@ -239,10 +239,8 @@ void sdSetup(void) {
     if (file.println(logHeader)) {
       file.close();
     }
-
     logHeader = "";
   }
-
   Serial.println("initialization done.");
 }
 
@@ -349,7 +347,6 @@ void get_bme688_data(struct flowMass flowData) {
   float humidity;
   float resistance;
   
-
   if ((millis() - lastLogged) >= MEAS_DUR) {
     lastLogged = millis();
     logHeader += timeToString();
@@ -408,7 +405,6 @@ void get_bme688_data(struct flowMass flowData) {
     }
   }
 
-
   logHeader += flowData.input;
   logHeader += ",";
   logHeader += flowData.output;
@@ -445,7 +441,6 @@ void get_bme688_data(struct flowMass flowData) {
     newLogdata = true;
   }
   
-
   if (newLogdata) {
     newLogdata = false;
 
