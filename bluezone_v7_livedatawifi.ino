@@ -24,10 +24,10 @@ ESP8266WiFiMulti wifiMulti;
 #define DEVICE "ESP8266"
 #endif
 
-// WiFi AP SSID
+/* WiFi AP SSID */
 #define WIFI_SSID "UHN-Guest-WiFi"
 // #define WIFI_SSID "WC_Guest"
-// WiFi password
+/* WiFi password */
 #define WIFI_PASSWORD ""
 // #define WIFI_PASSWORD "WomensCollege"
 
@@ -36,18 +36,17 @@ ESP8266WiFiMulti wifiMulti;
 #define TCAADDR 0x70
 #define MEAS_DUR 140
 #define N_SENS 2
-// #define LOG_FILE_NAME ""
 
-// get time
+/* Set up time with wifi */
 const char* ntpServer1 = "pool.ntp.org";
 const char* ntpServer2 = "time.nist.gov";
 const long gmtOffset_sec = 3600;
 const int daylightOffset_sec = 3600;
-
 const char* time_zone = "EST5EDT,M3.2.0,M11.1.0";
 
 String LOG_FILE_NAME = "/";
 
+/* set up sensors */
 Bme68x bme[N_SENS];
 bme68xData data[N_SENS] = { 0 };
 SensirionI2CSfm3000 sfm[N_SENS];
@@ -72,19 +71,19 @@ struct flowMass flowData;
 float scalingFactor = 140.0;
 float offset = 32000;
 
-// HX711 EEPROM
+/* HX711 EEPROM */
 const int calVal_eepromAdress = 0;
 unsigned long t = 0;
 float calVal;
 
-// HX711 pins
+/* HX711 pins */
 const int HX711_dout = 4;  //mcu > HX711 dout pin
 const int HX711_sck = 5;   //mcu > HX711 sck pin
 
-//HX711 constructor
+/* HX711 constructor */
 HX711_ADC LoadCell(HX711_dout, HX711_sck);
 
-// declare running average variables
+/* Declare running average variables */
 RunningAverage inputFlowRA(10);
 RunningAverage outputFlowRA(10);
 RunningAverage inputResRA(10);
@@ -101,12 +100,11 @@ void setup(void) {
   Serial.begin(115200);
   Wire.begin();
 
+  /* Set up RTC */
   if (!rtc.begin()) {
       Serial.println("RTC module is NOT found");
-      while (1)
-        ;
+      while (1);
     }
-
   if (rtc.lostPower()) {
     Serial.println("RTC lost power, setting time...");
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
@@ -115,10 +113,10 @@ void setup(void) {
   while (!Serial)
     delay(100);
 
-  startLoadCell();
-
   wifiSetup();
   sdSetup();
+
+  startLoadCell();
 
   bme[0].begin(0x76, Wire);
   bme[1].begin(0x77, Wire);
@@ -126,20 +124,77 @@ void setup(void) {
 
   sfm3000Setup(0,0);
   sfm3000Setup(1,7);
-
-  // Serial.println("TimeStamp(ms), Temperature(deg C), Pressure(Pa), Humidity(%), Gas resistance(ohm), Status");
 }
+
 
 void loop(void) {
   delay(200);
+
   flowData.input = get_sfm3000_data(0,0);
   inputFlowRA.add(flowData.input);
   flowData.output = get_sfm3000_data(1,7);
   outputFlowRA.add(flowData.output);
+
   getLoadCellData();
   get_bme688_data(flowData);
-
 }
+
+
+void startLoadCell(void) {
+  LoadCell.begin();
+  //LoadCell.setReverseOutput(); //uncomment to turn a negative output value to positive
+
+  /* calibration value (see example file "Calibration.ino")
+     store this in EEPROM */
+
+  float calibrationValue;
+
+#if defined(ESP8266) || defined(ESP32)
+  EEPROM.begin(512);  // uncomment this if you use ESP8266/ESP32 and want to fetch the calibration value from eeprom
+#endif
+
+  if (EEPROM.read(calVal_eepromAdress) == 255) {
+    calibrationValue = -128.0;  // if the eeprom is empty (255 or 0xFF), load a dummy value for calibration.  -128 is typically close to the final cal val.
+  } else {
+    EEPROM.get(calVal_eepromAdress, calibrationValue);  // uncomment this if you want to fetch the calibration value from eeprom
+  }
+
+  unsigned long stabilizingtime = 2000;  // preciscion right after power-up can be improved by adding a few seconds of stabilizing time
+  boolean _tare = true;                  //set this to false if you don't want tare to be performed in the next step
+  LoadCell.start(stabilizingtime, _tare);
+  if (LoadCell.getTareTimeoutFlag()) {
+    //    setGenericDisplay("Timeout, check MCU>HX711 wiring and pin designations", 1);
+    while (1)
+      ;
+  } else {
+    LoadCell.setCalFactor(calibrationValue);  // set calibration value (float)
+  }
+
+  LoadCell.tareNoDelay();
+  delay(1000);
+}
+
+
+void getLoadCellData(void) {
+  static boolean newDataReady = 0;
+  const int serialPrintInterval = 0;  //increase value to slow down serial print activity, default 0
+
+  /* check for new data/start next conversion: */
+  if (LoadCell.update()) newDataReady = true;
+
+  // get smoothed value from the dataset:
+  if (newDataReady) {
+    if (millis() > t + serialPrintInterval) {
+      flowData.mass = LoadCell.getData();
+      massRA.add(flowData.mass);
+      Serial.println("Mass:" + String(flowData.mass));
+
+      newDataReady = 0;
+      t = millis();
+    }
+  }
+}
+
 
 void wifiSetup() {
   configTzTime(time_zone, ntpServer1, ntpServer2);
@@ -153,6 +208,7 @@ void wifiSetup() {
   Serial.println(" CONNECTED");
 }
 
+
 void sdSetup(void) {
   Serial.print("Initializing SD card...");
 
@@ -162,13 +218,10 @@ void sdSetup(void) {
     Serial.println("2. is your wiring correct?");
     Serial.println("3. did you change the chipSelect pin to match your shield or module?");
     Serial.println("Note: press reset button on the board and reopen this Serial Monitor after fixing your issue!");
-    while (true)
-      ;
+    while (true);
   } else {
     LOG_FILE_NAME += timeToString();
     LOG_FILE_NAME += ".csv";
-
-    File file;
 
     file = SD.open(LOG_FILE_NAME, FILE_WRITE);
     if (!file) {
@@ -184,17 +237,16 @@ void sdSetup(void) {
                 "RAO Pres,RAI Res,RAO Res,RAI Flow,RAO Flow, RA Mass";
 
     if (file.println(logHeader)) {
-      // Serial.println(logHeader);
       file.close();
     }
     logHeader = "";
   }
-
   Serial.println("initialization done.");
 }
 
+
 void bmeSetup(void) {
-  // check if bme688 is online
+  /* check if bme688 is online */
   for (int i = 0; i < N_SENS; i++) {
     if (bme[i].checkStatus()) {
       if (bme[i].checkStatus() == BME68X_ERROR) {
@@ -220,10 +272,72 @@ void bmeSetup(void) {
     // bme[i].setHeaterProf(tempProf, mulProf, sharedHeatrDur, 10);
     bme[i].setHeaterProf(320,100);
 
-    /* Forced mode of sensor operation */
+    /* Parallel mode of sensor operation */
     // bme[i].setOpMode(BME68X_PARALLEL_MODE);
   }
 }
+
+
+/* Set up multiplexer */
+void tcaselect(uint8_t i) {
+  if (i > 7) return;
+ 
+  Wire.beginTransmission(TCAADDR);
+  Wire.write(1 << i);
+  Wire.endTransmission();  
+}
+
+
+void sfm3000Setup(int i, int bus) {
+  uint16_t error;
+  char errorMessage[64];
+  
+  tcaselect(bus);
+  sfm[i].begin(Wire, SFM300_I2C_ADDRESS_0);
+
+  uint32_t serialNumber;
+
+  error = sfm[i].readSerialNumber(serialNumber);
+
+  if (error) {
+      Serial.print("Error for sensor on port " + String(bus) + "serialNumber(): ");
+      errorToString(error, errorMessage, 64);
+      Serial.println(errorMessage);
+  } else {
+      Serial.print("SerialNumber:");
+      Serial.print(serialNumber);
+      Serial.println();
+  }
+
+  error = sfm[i].startContinuousMeasurement();
+
+  if (error) {
+      Serial.print("Error trying to execute startContinuousMeasurement(): ");
+      errorToString(error, errorMessage, 64);
+      Serial.println(errorMessage);
+  }   
+}
+
+
+float get_sfm3000_data(int i, int bus) {
+  uint16_t error;
+  float flow;
+  char errorMessage[64];
+
+  /* Read Flow Measurement */
+  tcaselect(bus);
+  error = sfm[i].readMeasurement(flow, scalingFactor, offset);
+
+  if (error) {
+    Serial.print("Error trying to execute readMeasurement(): ");
+    errorToString(error, errorMessage, 64);
+    Serial.println(errorMessage);
+  } else {
+    Serial.print("Flow" + String(i) + ":" + String(flow) + ",");
+  }
+  return flow;
+}
+
 
 void get_bme688_data(struct flowMass flowData) {
   int16_t indexDiff;
@@ -233,11 +347,8 @@ void get_bme688_data(struct flowMass flowData) {
   float humidity;
   float resistance;
   
-
   if ((millis() - lastLogged) >= MEAS_DUR) {
-
     lastLogged = millis();
-
     logHeader += timeToString();
     logHeader += ",";
 
@@ -246,11 +357,12 @@ void get_bme688_data(struct flowMass flowData) {
 
       if (bme[i].fetchData()) {
         bme[i].getData(data[i]);
-        // Serial.print(String(millis()) + " ms, ");
         temperature = data[i].temperature;
         pressure = data[i].pressure;
         humidity = data[i].humidity;
         resistance = data[i].gas_resistance;
+
+        /* Add data to running average, only works for 2 sensors */
         if (i == 0) {
           inputTempRA.addValue(temperature);
           inputPresRA.addValue(pressure);
@@ -262,11 +374,10 @@ void get_bme688_data(struct flowMass flowData) {
           outputHumRA.addValue(humidity);
           outputResRA.addValue(resistance);
         }
-        Serial.print("Temp"+ String(i) + ":" + String(temperature) + ",");
-        // Serial.print(String(data[i].pressure) + " Pa, ");
+        Serial.print("Temp" + String(i) + ":" + String(temperature) + ",");
+        // Serial.print("Pressure" + String(i) + String(data[i].pressure) + ",");
         Serial.print("Humidity" + String(i) + ":" + String(humidity) + ",");
         Serial.print("Resistance" + String(i) + ":" + String(resistance/1000000) + ",");
-        // Serial.println(data[i].status, HEX);
 
         lastMeasindex = data[i].meas_index;
       }
@@ -293,7 +404,6 @@ void get_bme688_data(struct flowMass flowData) {
       logHeader += ",";
     }
   }
-
 
   logHeader += flowData.input;
   logHeader += ",";
@@ -331,129 +441,12 @@ void get_bme688_data(struct flowMass flowData) {
     newLogdata = true;
   }
   
-
   if (newLogdata) {
     newLogdata = false;
 
     appendFile(logHeader);
     logHeader = "";
   }
-}
-
-void sfm3000Setup(int i, int bus) {
-  uint16_t error;
-  char errorMessage[64];
-  
-  tcaselect(bus);
-  sfm[i].begin(Wire, SFM300_I2C_ADDRESS_0);
-
-  uint32_t serialNumber;
-
-  error = sfm[i].readSerialNumber(serialNumber);
-
-  if (error) {
-      Serial.print("Error for sensor on port " + String(bus) + "serialNumber(): ");
-      errorToString(error, errorMessage, 64);
-      Serial.println(errorMessage);
-  } else {
-      Serial.print("SerialNumber:");
-      Serial.print(serialNumber);
-      Serial.println();
-  }
-
-  error = sfm[i].startContinuousMeasurement();
-
-  if (error) {
-      Serial.print("Error trying to execute startContinuousMeasurement(): ");
-      errorToString(error, errorMessage, 64);
-      Serial.println(errorMessage);
-  }   
-}
-
-float get_sfm3000_data(int i, int bus) {
-  uint16_t error;
-  float flow;
-  char errorMessage[64];
-
-  // Read Measurement
-  tcaselect(bus);
-  error = sfm[i].readMeasurement(flow, scalingFactor, offset);
-
-  if (error) {
-    Serial.print("Error trying to execute readMeasurement(): ");
-    errorToString(error, errorMessage, 64);
-    Serial.println(errorMessage);
-  } else {
-    Serial.print("Flow" + String(i) + ":" + String(flow) + ",");
-    // Serial.print(flowData.input);
-    // Serial.println();
-  }
-  return flow;
-}
-
-void startLoadCell(void) {
-  LoadCell.begin();
-  //LoadCell.setReverseOutput(); //uncomment to turn a negative output value to positive
-
-  // calibration value (see example file "Calibration.ino")
-  // store this in EEPROM
-
-  float calibrationValue;
-
-#if defined(ESP8266) || defined(ESP32)
-  EEPROM.begin(512);  // uncomment this if you use ESP8266/ESP32 and want to fetch the calibration value from eeprom
-#endif
-
-  if (EEPROM.read(calVal_eepromAdress) == 255) {
-    calibrationValue = -128.0;  // if the eeprom is empty (255 or 0xFF), load a dummy value for calibration.  -128 is typically close to the final cal val.
-  } else {
-    EEPROM.get(calVal_eepromAdress, calibrationValue);  // uncomment this if you want to fetch the calibration value from eeprom
-  }
-
-  unsigned long stabilizingtime = 2000;  // preciscion right after power-up can be improved by adding a few seconds of stabilizing time
-  boolean _tare = true;                  //set this to false if you don't want tare to be performed in the next step
-  LoadCell.start(stabilizingtime, _tare);
-  if (LoadCell.getTareTimeoutFlag()) {
-    //    setGenericDisplay("Timeout, check MCU>HX711 wiring and pin designations", 1);
-    while (1)
-      ;
-  } else {
-    LoadCell.setCalFactor(calibrationValue);  // set calibration value (float)
-  }
-
-  LoadCell.tareNoDelay();
-  delay(1000);
-}
-
-void getLoadCellData(void) {
-  static boolean newDataReady = 0;
-  const int serialPrintInterval = 0;  //increase value to slow down serial print activity, default 0
-
-  // check for new data/start next conversion:
-  if (LoadCell.update()) newDataReady = true;
-
-  // get smoothed value from the dataset:
-  if (newDataReady) {
-    if (millis() > t + serialPrintInterval) {
-      flowData.mass = LoadCell.getData();
-      massRA.add(flowData.mass);
-      Serial.println("Mass:" + String(flowData.mass));
-      // Serial.print(flowData.mass); 
-      // Serial.println();
-
-      newDataReady = 0;
-      t = millis();
-    }
-  }
-}
-
-// set up multiplexer
-void tcaselect(uint8_t i) {
-  if (i > 7) return;
- 
-  Wire.beginTransmission(TCAADDR);
-  Wire.write(1 << i);
-  Wire.endTransmission();  
 }
 
 
@@ -479,6 +472,7 @@ String timeToString(void) {
   
   return time;
 }
+
 
 /* Time using RTC, comment out function above and uncomment function below */
 // String timeToString(void) {
@@ -535,7 +529,6 @@ String timeToString(void) {
  * @param sensorData
  */
 static void writeFile(String sensorData) {
-
   if (!SD.open(LOG_FILE_NAME, FILE_WRITE)) {
     Serial.println("Failed to open file for writing");
   } else {
@@ -546,13 +539,12 @@ static void writeFile(String sensorData) {
   file.close();
 }
 
+
 /*!
  * @brief Appending the sensor data into the log file(csv)
  * @param sensorData
  */
 static void appendFile(String sensorData) {
-
-  // LOG_FILE_NAME = ""
   file = SD.open(LOG_FILE_NAME, FILE_APPEND);
 
   if (!file) {
@@ -561,8 +553,6 @@ static void appendFile(String sensorData) {
   }
 
   if (file.println(sensorData)) {
-    // Serial.println(sensorData);
-    // Serial.println("Data appended.");
   } else {
     Serial.println("Failed to append");
   }
